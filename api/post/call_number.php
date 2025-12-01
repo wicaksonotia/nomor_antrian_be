@@ -16,17 +16,33 @@ if (!$id || !$counter) {
 }
 
 try {
+    // Cek apakah sudah melebihi batas panggilan
+    $check = $pdo->prepare("SELECT is_called FROM queue WHERE id = :id");
+    $check->execute([':id' => $id]);
+    $current = $check->fetchColumn();
+
+    if ($current >= 3) {
+        jsonResponse([
+            'success' => false,
+            'message' => 'Nomor ini sudah mencapai batas panggil ulang (maksimal 3x)'
+        ], 400);
+        exit;
+    }
+
     $pdo->beginTransaction();
 
-    // 1️⃣ Update nomor antrian untuk loket tertentu
+    // Update is_called +1 tapi maksimal 3
     $upd = $pdo->prepare("
         UPDATE queue 
-        SET is_called = 1, counter = :counter, updated_at = NOW() 
+        SET 
+            is_called = LEAST(is_called + 1, 3),
+            counter = :counter,
+            updated_at = NOW() 
         WHERE id = :id
     ");
     $upd->execute([':counter' => $counter, ':id' => $id]);
 
-    // 2️⃣ Log aksi ke queue_log
+    // Log
     $log = $pdo->prepare("
         INSERT INTO queue_log (queue_id, action, message) 
         VALUES (:qid, 'called', :msg)
